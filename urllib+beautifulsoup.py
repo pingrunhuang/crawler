@@ -224,3 +224,8 @@ from urllib.parse import urlparse
 
 parsed_url = urlparse(url)
 # returns ParseResult(scheme='https', netloc='movie.douban.com', path='', params='', query='', fragment='')
+
+
+# lambda expression
+soup.find_all(lambda tag: len(tag.attrs) == 2)
+

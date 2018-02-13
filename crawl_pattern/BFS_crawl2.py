@@ -1,15 +1,13 @@
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
-import pymysql
+
 import nltk
 
 class SolutionFound(RuntimeError):
     def __init__(self, message):
         self.message = message
 
-conn = pymysql.connect(host='localhost', unix_socket='/tmp/mysql.sock',
-    user='root', passwd=None, db='mysql', charset='utf8')
-cur = conn.cursor()
+
 def getSubLinks(fromPageId):
     cur.execute()
 
