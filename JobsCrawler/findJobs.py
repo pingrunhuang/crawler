@@ -1,6 +1,16 @@
 # -*- coding:utf-8 -*-
+'''
+This is a rought implementation, results are not stored in the database.
+
+
+TODO:
+store the result as a structured dataset
+'''
+
 import requests
 import json
+from bs4 import BeautifulSoup
+import time
 
 session = requests.Session()
 headers={
@@ -36,7 +46,21 @@ def search(keywords, city='全国'):
     else:
         return None
 
-def fetch_data(response):
+def fetch_position_details(positionId):
+    url = 'https://www.lagou.com/jobs/%s.html'%positionId
+    res = session.get(url, headers=headers)
+    soup = BeautifulSoup(res.text,'html.parser')
+    
+    try:
+        print(soup.find('dd', {'class':'job_bt'}).get_text())
+        print(soup.find('dd', {'class':'job_request'}).get_text())
+    except:
+        return print('No job request')
+    
+
+
+
+def fetch_all_positions(response, mode=1):
     payloads={
         'first':'false',
         'pn':'1',
@@ -44,20 +68,36 @@ def fetch_data(response):
     }
     headers['Referer']=response.url
     res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
+    if mode==1:
+        result = json.loads(res.text)['content']['positionResult']['result']
+        for item in result:
+            time.sleep(20)
+            headers['Referer']=response.url
+            positionId = item['positionId']
+            print(positionId)
+            fetch_position_details(positionId)
     
-    total_pages = get_total_page(res)
-    for page in range(1,total_pages+1):
-        print('Processing the page %s'%page)
-        payloads['pn']=str(page)
-        res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
-        json_response=json.loads(res.text)
-        try:
-            print(json_response['content']['positionResult']['result'])
-        except:
-            continue
+    elif mode==2:
+        total_pages = get_total_page(res)
+        for page in range(1,total_pages+1):
+            print('Processing the page %s'%page)
+            payloads['pn']=str(page)
+            res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
+            json_response=json.loads(res.text)
+            try:
+                result=json_response['content']['positionResult']['result'])
+                for item in result:
+                    # it is found that each fetching request should have some pause in order to get data back
+                    time.sleep(20)
+                    headers['Referer']=response.url
+                    positionId = item['positionId']
+                    print(positionId)
+                    fetch_position_details(positionId)
+            except:
+                continue
 
 if __name__=='__main__':
     print('start crawling')
     response = search('python')
     if response:
-        fetch_data(response)
+        fetch_all_positions(response,1)
