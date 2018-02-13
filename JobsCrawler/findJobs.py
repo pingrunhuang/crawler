@@ -4,7 +4,8 @@ This is a rought implementation, results are not stored in the database.
 
 
 TODO:
-store the result as a structured dataset
+1. store the result as a structured dataset
+2. multiprocessing: each page could be processed by one thread
 '''
 
 import requests
@@ -23,28 +24,11 @@ headers={
 }
 
 
-
 def get_total_page(response):
-    print(response.text)
     result = json.loads(response.text)
     totalCount = result['content']['positionResult']['totalCount']
     positions_per_page = result['content']['positionResult']['resultSize']
     return int(totalCount)//int(positions_per_page) + 1
-
-
-def search(keywords, city='全国'):
-    params = {
-        'city':city,
-        'cl':'false',
-        'fromSearch':'true',
-        'labelWords':'',
-        'suginput':''
-    }
-    res = session.get('https://www.lagou.com/jobs/list_%s'%keywords, params=params, headers=headers)
-    if res.status_code==200:
-        return res
-    else:
-        return None
 
 def fetch_position_details(positionId):
     url = 'https://www.lagou.com/jobs/%s.html'%positionId
@@ -60,11 +44,28 @@ def fetch_position_details(positionId):
 
 
 
-def fetch_all_positions(response, mode=1):
+def fetch_all_positions(keywords, city='全国', mode=1):
+    params = {
+        'city':city,
+        'cl':'false',
+        'fromSearch':'true',
+        'labelWords':'',
+        'suginput':''
+    }
+    if len(keywords.split(' '))!=1:
+        new_keywords=keywords.replace(' ', '%20')
+
+    url='https://www.lagou.com/jobs/list_%s'%new_keywords
+    response = session.get(url, params=params, headers=headers)
+    print("start fetching data from: ", response.url)
+
+    if response.status_code!=200:
+        return None
+    
     payloads={
         'first':'false',
         'pn':'1',
-        'kd':'python'
+        'kd':keywords
     }
     headers['Referer']=response.url
     res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
@@ -85,7 +86,7 @@ def fetch_all_positions(response, mode=1):
             res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
             json_response=json.loads(res.text)
             try:
-                result=json_response['content']['positionResult']['result'])
+                result=json_response['content']['positionResult']['result']
                 for item in result:
                     # it is found that each fetching request should have some pause in order to get data back
                     time.sleep(20)
@@ -98,6 +99,4 @@ def fetch_all_positions(response, mode=1):
 
 if __name__=='__main__':
     print('start crawling')
-    response = search('python')
-    if response:
-        fetch_all_positions(response,1)
+    response = fetch_all_positions(keywords='data scientist', mode=1)
