@@ -12,6 +12,7 @@ import requests
 import json
 from bs4 import BeautifulSoup
 import time
+import threading
 
 session = requests.Session()
 headers={
@@ -22,7 +23,6 @@ headers={
     'Host':'www.lagou.com',
     'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36'
 }
-
 
 def get_total_page(response):
     result = json.loads(response.text)
@@ -42,9 +42,11 @@ def fetch_position_details(positionId):
         return print('No job request')
     
 
-
-
-def fetch_all_positions(keywords, city='全国', mode=1):
+def get_pages(keywords, city='全国'):
+    '''
+    type: keywords: the keyword you want to search
+    rtype: totla_pages:int 
+    '''
     params = {
         'city':city,
         'cl':'false',
@@ -52,51 +54,59 @@ def fetch_all_positions(keywords, city='全国', mode=1):
         'labelWords':'',
         'suginput':''
     }
-    if len(keywords.split(' '))!=1:
-        new_keywords=keywords.replace(' ', '%20')
-
-    url='https://www.lagou.com/jobs/list_%s'%new_keywords
-    response = session.get(url, params=params, headers=headers)
-    print("start fetching data from: ", response.url)
-
-    if response.status_code!=200:
-        return None
-    
     payloads={
         'first':'false',
         'pn':'1',
         'kd':keywords
     }
-    headers['Referer']=response.url
-    res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
-    if mode==1:
-        result = json.loads(res.text)['content']['positionResult']['result']
-        for item in result:
-            time.sleep(20)
-            headers['Referer']=response.url
-            positionId = item['positionId']
-            print(positionId)
-            fetch_position_details(positionId)
+    # replace the space with %20
+    new_keywords = keywords
+    if len(keywords.split(' '))!=1:
+        new_keywords=keywords.replace(' ', '%20')
+
+    url='https://www.lagou.com/jobs/list_%s'%new_keywords
+    response = session.get(url, params=params, headers=headers)
+
+    if response.status_code!=200:
+        print("Error for fetching data...")
+        return None
     
-    elif mode==2:
-        total_pages = get_total_page(res)
-        for page in range(1,total_pages+1):
-            print('Processing the page %s'%page)
-            payloads['pn']=str(page)
-            res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
-            json_response=json.loads(res.text)
+    res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
+    total_pages = get_total_page(res)
+    # set the global referer url after getting all the pages num
+    headers['Referer']=res.url
+    return total_pages
+
+def worker_fetcher(keywords, page):
+    payloads={
+        'first':'false',
+        'pn':str(page),
+        'kd':keywords
+    }
+    print('Processing the page %s'%page)
+    res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
+    json_response=json.loads(res.text)
+    try:
+        result=json_response['content']['positionResult']['result']
+        for item in result:
             try:
-                result=json_response['content']['positionResult']['result']
-                for item in result:
-                    # it is found that each fetching request should have some pause in order to get data back
-                    time.sleep(20)
-                    headers['Referer']=response.url
-                    positionId = item['positionId']
-                    print(positionId)
-                    fetch_position_details(positionId)
+                # it is found that each fetching request should have some pause in order to get data back
+                time.sleep(20)
+                headers['Referer']=response.url
+                positionId = item['positionId']
+                print(positionId)
+                fetch_position_details(positionId)
             except:
                 continue
+    except:
+        print("Error parsing data")
 
 if __name__=='__main__':
     print('start crawling')
-    response = fetch_all_positions(keywords='data scientist', mode=1)
+    keyword="python"
+    pages = get_pages(keyword)
+    threads=[]
+    for page in range(1,pages+1):
+        threads.append(threading.Thread("Worker thread %s"%str(page), target=worker_fetcher, args=(keyword, page)))
+
+    response = fetch_all_positions(keywords='python', mode=1)
