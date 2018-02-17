@@ -13,100 +13,98 @@ import json
 from bs4 import BeautifulSoup
 import time
 import threading
+import uuid
 
 session = requests.Session()
-headers={
-    'Referer':'https://www.lagou.com/',
-    'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Encoding':'gzip, deflate, br',
-    'Accept-Language':'en,zh-CN;q=0.9,zh;q=0.8,zh-TW;q=0.7',
-    'Host':'www.lagou.com',
-    'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36'
-}
+def get_uuid():
+    return str(uuid.uuid4())
 
-def get_total_page(response):
-    result = json.loads(response.text)
-    totalCount = result['content']['positionResult']['totalCount']
-    positions_per_page = result['content']['positionResult']['resultSize']
-    return int(totalCount)//int(positions_per_page) + 1
+cookie = "JSESSIONID=" + get_uuid() + ";" \
+    "user_trace_token=" + get_uuid() + "; LGUID=" + get_uuid() + ";" \
+    "SEARCH_ID=" + get_uuid() + '; _gid=GA1.2.717841549.1514043316; ' '_ga=GA1.2.952298646.1514043316; ' \
+    'LGSID=' + get_uuid() + "; " + "LGRID=" + get_uuid() + "; "
+
+headers = {
+    'cookie': cookie,
+    'origin': "https://www.lagou.com",
+    'x-anit-forge-code': "0",
+    'accept-encoding': "gzip, deflate, br",
+    'accept-language': "zh-CN,zh;q=0.8,en;q=0.6",
+    'user-agent': "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
+    'content-type': "application/x-www-form-urlencoded; charset=UTF-8",
+    'accept': "application/json, text/javascript, */*; q=0.01",
+    'referer': "https://www.lagou.com/jobs/list_python?px=new&city=%E6%88%90%E9%83%BD",
+    'x-requested-with': "XMLHttpRequest",
+    'connection': "keep-alive",
+    'x-anit-forge-token': "None",
+    'cache-control': "no-cache",
+    'postman-token': "91beb456-8dd9-0390-a3a5-64ff3936fa63"
+}    
 
 def fetch_position_details(positionId):
     url = 'https://www.lagou.com/jobs/%s.html'%positionId
     res = session.get(url, headers=headers)
     soup = BeautifulSoup(res.text,'html.parser')
-    
     try:
+        # TODO: add your requirement for the job to the following 
+        print(positionId)
         print(soup.find('dd', {'class':'job_bt'}).get_text())
         print(soup.find('dd', {'class':'job_request'}).get_text())
     except:
         return print('No job request')
     
 
-def get_pages(keywords, city='全国'):
+def get_pages(keywords, city="全国"):
     '''
     type: keywords: the keyword you want to search
-    rtype: totla_pages:int 
+    rtype: totla_pages:int
+    if the result is wired, the headers could be wrong
     '''
-    params = {
-        'city':city,
-        'cl':'false',
-        'fromSearch':'true',
-        'labelWords':'',
-        'suginput':''
-    }
-    payloads={
-        'first':'false',
-        'pn':'1',
-        'kd':keywords
-    }
-    # replace the space with %20
-    new_keywords = keywords
-    if len(keywords.split(' '))!=1:
-        new_keywords=keywords.replace(' ', '%20')
+    url = "https://www.lagou.com/jobs/positionAjax.json"
+    params = {"px": "new", "city": city, "needAddtionalResult": "false", "isSchoolJob": "0"}
+    payload = "first=false&pn=1&kd=" +keywords
+    res = session.post(url,params=params, data=payload, headers=headers)
+    result = json.loads(res.text)
+    totalCount = result['content']['positionResult']['totalCount']
+    positions_per_page = result['content']['positionResult']['resultSize']
+    return int(totalCount)//int(positions_per_page) + 1
 
-    url='https://www.lagou.com/jobs/list_%s'%new_keywords
-    response = session.get(url, params=params, headers=headers)
-
-    if response.status_code!=200:
-        print("Error for fetching data...")
-        return None
-    
-    res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
-    total_pages = get_total_page(res)
-    # set the global referer url after getting all the pages num
-    headers['Referer']=res.url
-    return total_pages
-
-def worker_fetcher(keywords, page):
-    payloads={
-        'first':'false',
-        'pn':str(page),
-        'kd':keywords
-    }
+def worker_fetcher(keywords, page, city="全国"):
+    time.sleep(20)
     print('Processing the page %s'%page)
-    res = session.post('https://www.lagou.com/jobs/positionAjax.json?needAddtionalResult=false&isSchoolJob=0', data=payloads, headers=headers)
+    url = "https://www.lagou.com/jobs/positionAjax.json"
+    params = {"px": "new", "city": city, "needAddtionalResult": "false", "isSchoolJob": "0"}
+    payloads={'first':'false','pn':str(page),'kd':keywords}
+
+    res = session.post(url, data=payloads, headers=headers)
     json_response=json.loads(res.text)
     try:
         result=json_response['content']['positionResult']['result']
         for item in result:
             try:
-                # it is found that each fetching request should have some pause in order to get data back
-                time.sleep(20)
-                headers['Referer']=response.url
                 positionId = item['positionId']
-                print(positionId)
                 fetch_position_details(positionId)
             except:
                 continue
     except:
         print("Error parsing data")
 
+def parallell_fetching(keyword, city, pages):
+    threads=[]
+    for page in range(1,pages+1):
+        t = threading.Thread(target=worker_fetcher, args=(keyword, page, city))
+        threads.append(t)
+        t.start()
+
+def single_fetch(keyword, city, pages):
+    for page in range(1, pages+1):
+        worker_fetcher(keyword, page, city=city)
+
 if __name__=='__main__':
     print('start crawling')
     keyword="python"
+    city="全国"
+    
     pages = get_pages(keyword)
-    threads=[]
-    for page in range(1,pages+1):
-        threads.append(threading.Thread("Worker thread %s"%str(page), target=worker_fetcher, args=(keyword, page)))
-
-    response = fetch_all_positions(keywords='python', mode=1)
+    print("Processing %s pages"%pages)
+    single_fetch(keyword, city, pages)
